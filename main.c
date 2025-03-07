@@ -187,6 +187,7 @@ int main(int agrc, char* argv[]) {
     free(lhs_packed);
     free(rhs_t_packed);
     free(res_packed);
+    free(check);
 
     return 0;
 }
