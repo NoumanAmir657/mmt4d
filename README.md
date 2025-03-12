@@ -1,4 +1,4 @@
-# MMT4d
+# MMT4D
 
 Implementation of mmt4d in C
 
