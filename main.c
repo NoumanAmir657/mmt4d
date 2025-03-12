@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 void intialize_matrix(int** matrix, int shape0, int shape1, int value) {
     int counter = 1;
@@ -173,8 +174,20 @@ int main(int agrc, char* argv[]) {
     transpose(rhs, rhs_t, K, N);
     pack(rhs_t, rhs_t_packed, N, K, N0, K0);
 
+    // Timing mmt4d
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
     mmt4d(lhs_packed, rhs_t_packed, res_packed, lhs_strides, rhs_strides, res_strides, M1, N1, K1, M0, N0, K0);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double mmt4d_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    printf("Time for mmt4d: %f seconds\n", mmt4d_time);
+
+    // Timing matmul
+    clock_gettime(CLOCK_MONOTONIC, &start);
     matmul(lhs, rhs, check, M, N, K);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double matmul_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    printf("Time for matmul: %f seconds\n", matmul_time);
 
     unpack(res_packed, res, M, N, M0, N0);
     
