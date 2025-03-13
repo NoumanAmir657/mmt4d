@@ -169,15 +169,14 @@ int main(int agrc, char* argv[]) {
     intialize_to_zero(res, M, N);
     intialize_to_zero(check, M, N);
 
-    pack(lhs, lhs_packed, M, K, M0, K0);
-
-    transpose(rhs, rhs_t, K, N);
-    pack(rhs_t, rhs_t_packed, N, K, N0, K0);
-
     // Timing mmt4d
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
+    pack(lhs, lhs_packed, M, K, M0, K0);
+    transpose(rhs, rhs_t, K, N);
+    pack(rhs_t, rhs_t_packed, N, K, N0, K0);
     mmt4d(lhs_packed, rhs_t_packed, res_packed, lhs_strides, rhs_strides, res_strides, M1, N1, K1, M0, N0, K0);
+    unpack(res_packed, res, M, N, M0, N0);
     clock_gettime(CLOCK_MONOTONIC, &end);
     double mmt4d_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
     printf("Time for mmt4d: %f seconds\n", mmt4d_time);
@@ -189,8 +188,6 @@ int main(int agrc, char* argv[]) {
     double matmul_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
     printf("Time for matmul: %f seconds\n", matmul_time);
 
-    unpack(res_packed, res, M, N, M0, N0);
-    
     compare(res, check, M, N);
 
     free(lhs);
