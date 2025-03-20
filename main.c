@@ -121,6 +121,13 @@ void calculateStrides(int *lhs_strides, int* rhs_strides, int*res_strides, int M
     res_strides[0] = N1 * res_strides[1];
 }
 
+void free2D(int** matrix, int shape0) {
+    for (int i = 0; i < shape0; i++) {
+        free(matrix[i]);
+    }
+    free(matrix);
+}
+
 int main(int agrc, char* argv[]) {
     int M = atoi(argv[1]);
     int N = atoi(argv[2]);
@@ -190,14 +197,14 @@ int main(int agrc, char* argv[]) {
 
     compare(res, check, M, N);
 
-    free(lhs);
-    free(rhs);
-    free(res);
-    free(rhs_t);
+    free2D(lhs, M);
+    free2D(rhs, K);
+    free2D(res, M);
+    free2D(rhs_t, N);
+    free2D(check, M);
     free(lhs_packed);
     free(rhs_t_packed);
     free(res_packed);
-    free(check);
 
     return 0;
 }
