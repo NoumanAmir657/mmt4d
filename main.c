@@ -57,41 +57,36 @@ void unpack(int *array, int** matrix, int shape0, int shape1, int inner_parallel
 }
 
 #ifdef __riscv
-void mmt4d_rvv(int* lhs_packed, int* rhs_packed, int* res_packed, int lhs_strides[3], int rhs_strides[3], int res_strides[3], int M, int N, int K, int M0, int N0, int K0) {
+void mmt4d_rvv(int* lhs_packed, int* rhs_packed, int* res_packed, int M, int N, int K, int M0, int N0, int K0) {
     for (int i = 0; i < M; i++) {
         int* lhs_panel = &lhs_packed[i * K * M0 * K0];
         for (int j = 0; j < N; j++) {
             int* rhs_panel = &rhs_packed[j * K * N0 * K0];
             int* out_panel = &res_packed[i * N * M0 * N0 + j * M0 * N0];
 
-            vint32mf2_t  acc0, acc1, acc2, acc3;
+            vint32m2_t  acc0, acc1, acc2, acc3;
             size_t vl = N0;
 
-            acc0 = __riscv_vle32_v_i32mf2(out_panel, vl);
-            acc1 = __riscv_vle32_v_i32mf2(out_panel + N0, vl);
-            acc2 = __riscv_vle32_v_i32mf2(out_panel + N0 * 2, vl);
-            acc3 = __riscv_vle32_v_i32mf2(out_panel + N0 * 3, vl);
+            acc0 = __riscv_vle32_v_i32m2(out_panel, vl);
+            acc1 = __riscv_vle32_v_i32m2(out_panel + N0, vl);
+            acc2 = __riscv_vle32_v_i32m2(out_panel + N0 * 2, vl);
+            acc3 = __riscv_vle32_v_i32m2(out_panel + N0 * 3, vl);
 
             int *lhs_ptr = lhs_panel;
 
             for (int k = 0; k < K; ++k) {
-                vint32mf2_t rhs = __riscv_vle32_v_i32mf2(rhs_panel, vl);
+                vint32m2_t rhs = __riscv_vle32_v_i32m2(rhs_panel, vl);
                 rhs_panel += N0;
 
-                int lhs[4];
-                for (int x = 0; x < M0; ++x) {
-                    lhs[x] = *lhs_ptr++;
-                }
-
-                acc0 = __riscv_vmacc_vx_i32mf2(acc0, lhs[0], rhs, vl);
-                acc1 = __riscv_vmacc_vx_i32mf2(acc1, lhs[1], rhs, vl);
-                acc2 = __riscv_vmacc_vx_i32mf2(acc2, lhs[2], rhs, vl);
-                acc3 = __riscv_vmacc_vx_i32mf2(acc3, lhs[3], rhs, vl);
+                acc0 = __riscv_vmacc_vx_i32m2(acc0, *lhs_ptr++, rhs, vl);
+                acc1 = __riscv_vmacc_vx_i32m2(acc1, *lhs_ptr++, rhs, vl);
+                acc2 = __riscv_vmacc_vx_i32m2(acc2, *lhs_ptr++, rhs, vl);
+                acc3 = __riscv_vmacc_vx_i32m2(acc3, *lhs_ptr++, rhs, vl);
             }
-            __riscv_vse32_v_i32mf2(out_panel, acc0, vl);
-            __riscv_vse32_v_i32mf2(out_panel + N0, acc1, vl);
-            __riscv_vse32_v_i32mf2(out_panel + N0 * 2, acc2, vl);
-            __riscv_vse32_v_i32mf2(out_panel + N0 * 3, acc3, vl);
+            __riscv_vse32_v_i32m2(out_panel, acc0, vl);
+            __riscv_vse32_v_i32m2(out_panel + N0, acc1, vl);
+            __riscv_vse32_v_i32m2(out_panel + N0 * 2, acc2, vl);
+            __riscv_vse32_v_i32m2(out_panel + N0 * 3, acc3, vl);
         }
     }
 }
@@ -197,10 +192,6 @@ int main(int agrc, char* argv[]) {
     for (int i = 0; i < M; i++) {
         res[i] = (int*)malloc(N * sizeof(int));
     }
-    int** res_rvv = (int**)malloc(M * sizeof(int*));
-    for (int i = 0; i < M; i++) {
-        res_rvv[i] = (int*)malloc(N * sizeof(int));
-    }
     int** check = (int**)malloc(M * sizeof(int*));
     for (int i = 0; i < M; i++) {
         check[i] = (int*)malloc(N * sizeof(int));
@@ -209,7 +200,6 @@ int main(int agrc, char* argv[]) {
     int* lhs_packed = (int*)malloc(M * K * sizeof(int));
     int* rhs_t_packed = (int*)malloc(N * K * sizeof(int));
     int* res_packed = (int*)malloc(M * N * sizeof(int));
-    int* res_rvv_packed = (int*)malloc(M * N * sizeof(int));
 
     int lhs_strides[3];
     int rhs_strides[3];
@@ -225,7 +215,6 @@ int main(int agrc, char* argv[]) {
     intialize_to_zero(res, M, N);
     intialize_to_zero(check, M, N);
 
-    // Timing matmul
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
     matmul(lhs, rhs, check, M, N, K);
@@ -233,43 +222,31 @@ int main(int agrc, char* argv[]) {
     double matmul_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
     printf("Time for matmul: %f seconds\n", matmul_time);
 
-    // Timing rvv mmt4d
-    #ifdef __riscv
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    pack(lhs, lhs_packed, M, K, M0, K0);
-    transpose(rhs, rhs_t, K, N);
-    pack(rhs_t, rhs_t_packed, N, K, N0, K0);
-    pack(res, res_rvv_packed, M, N, M0, N0);
-    mmt4d_rvv(lhs_packed, rhs_t_packed, res_rvv_packed, lhs_strides, rhs_strides, res_strides, M1, N1, K1, M0, N0, K0);
-    unpack(res_rvv_packed, res_rvv, M, N, M0, N0);
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    double mmt4d_rvv_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-    printf("Time for mmt4d: %f seconds\n", mmt4d_rvv_time);
-    compare(res_rvv, check, M, N);
-    #endif
-
-    // Timing naive mmt4d
     clock_gettime(CLOCK_MONOTONIC, &start);
     pack(lhs, lhs_packed, M, K, M0, K0);
     transpose(rhs, rhs_t, K, N);
     pack(rhs_t, rhs_t_packed, N, K, N0, K0);
     pack(res, res_packed, M, N, M0, N0);
-    mmt4d(lhs_packed, rhs_t_packed, res_packed, lhs_strides, rhs_strides, res_strides, M1, N1, K1, M0, N0, K0);
+
+    #ifdef __riscv
+        mmt4d_rvv(lhs_packed, rhs_t_packed, res_packed, M1, N1, K1, M0, N0, K0);
+    #else
+        mmt4d(lhs_packed, rhs_t_packed, res_packed, lhs_strides, rhs_strides, res_strides, M1, N1, K1, M0, N0, K0);
+    #endif
+
     unpack(res_packed, res, M, N, M0, N0);
     clock_gettime(CLOCK_MONOTONIC, &end);
-    double mmt4d_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-    printf("Time for mmt4d: %f seconds\n", mmt4d_time);
+    double mmt4d_rvv_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    printf("Time for mmt4d: %f seconds\n", mmt4d_rvv_time);
     compare(res, check, M, N);
 
     free2D(lhs, M);
     free2D(rhs, K);
     free2D(res, M);
-    free2D(res_rvv, M);
     free2D(rhs_t, N);
     free2D(check, M);
     free(lhs_packed);
     free(rhs_t_packed);
     free(res_packed);
-    free(res_rvv_packed);
     return 0;
 }
